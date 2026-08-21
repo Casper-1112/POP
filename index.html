@@ -22,9 +22,10 @@
     overscroll-behavior:none; user-select:none; -webkit-user-select:none;
     touch-action:pan-y;
   }
-  .stage{width:min(94vw,430px);display:flex;flex-direction:column;gap:14px}
+  .stage{width:min(92vw,384px);display:flex;flex-direction:column;gap:14px}
 
   /* ── 標題列 ── */
+  .credit{text-align:center;font-size:11px;color:var(--sub);letter-spacing:2px;margin-top:2px}
   header{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
   .logo{display:flex;align-items:center;gap:12px}
   .logo-blocks{display:grid;grid-template-columns:repeat(2,16px);grid-auto-rows:16px;gap:3px;transform:rotate(-8deg)}
@@ -101,7 +102,7 @@
     75%{opacity:1}
     100%{opacity:0;transform:translate(-50%,-70%) scale(.9) rotate(-3deg)}
   }
-  .particle{position:absolute;width:8px;height:8px;border-radius:3px;pointer-events:none}
+  .particle{position:absolute;width:8px;height:8px;border-radius:3px;pointer-events:none;will-change:transform,opacity}
 
   /* ── 旋轉列 ── */
   .rot-bar{display:flex;align-items:center;justify-content:space-between}
@@ -122,7 +123,7 @@
   /* ── 方塊盤 ── */
   #tray{display:flex;gap:10px;justify-content:space-between}
   .slot{
-    flex:1;height:104px;background:var(--panel);border-radius:var(--r);
+    flex:1;height:92px;background:var(--panel);border-radius:var(--r);
     display:flex;align-items:center;justify-content:center;
     box-shadow:inset 0 3px 8px rgba(0,0,0,.35);
     touch-action:none;
@@ -142,8 +143,9 @@
   .slot.dragging .piece{opacity:.25}
 
   #drag{
-    position:fixed;z-index:50;pointer-events:none;display:grid;gap:4px;
+    position:fixed;left:0;top:0;z-index:50;pointer-events:none;display:grid;gap:4px;
     filter:drop-shadow(0 10px 14px rgba(0,0,0,.45));
+    will-change:transform;
   }
   #drag i{border-radius:7px;background:var(--c);
     box-shadow:inset 0 -4px 0 rgba(0,0,0,.28),inset 0 2px 0 rgba(255,255,255,.35)}
@@ -178,6 +180,7 @@
 </head>
 <body>
 <div class="stage">
+  <div class="credit">作者：陳璟樂　V1.1.0</div>
   <header>
     <div class="logo">
       <div class="logo-blocks" aria-hidden="true"><i></i><i></i><i></i></div>
@@ -270,8 +273,26 @@ const SHAPES = [
   {c:[[0,1],[1,0],[1,1],[2,1]], col:4, w:1.5},
   // 十字五連（洋紅）
   {c:[[0,1],[1,0],[1,1],[1,2],[2,1]], col:6, w:0.8},
+  // U 型五連（洋紅）
+  {c:[[0,0],[0,2],[1,0],[1,1],[1,2]], col:6, w:0.8},
+  {c:[[0,0],[0,1],[0,2],[1,0],[1,2]], col:6, w:0.8},
+  {c:[[0,0],[0,1],[1,0],[2,0],[2,1]], col:6, w:0.8},
+  {c:[[0,0],[0,1],[1,1],[2,0],[2,1]], col:6, w:0.8},
+  // 對角線（青）
+  {c:[[0,0],[1,1]], col:3, w:1.2},
+  {c:[[0,1],[1,0]], col:3, w:1.2},
+  {c:[[0,0],[1,1],[2,2]], col:3, w:0.8},
+  {c:[[0,2],[1,1],[2,0]], col:3, w:0.8},
+  // 6 格長條（10x10 專用，稀有）
+  {c:[[0,0],[0,1],[0,2],[0,3],[0,4],[0,5]], col:0, w:0.6},
+  {c:[[0,0],[1,0],[2,0],[3,0],[4,0],[5,0]], col:0, w:0.6},
 ];
-const TOTAL_W = SHAPES.reduce((s,x)=>s+x.w,0);
+/* 出現機率：小積木（<4 格）佔 70%，大積木（>=4 格）佔 30% */
+const SMALL_RATE = 0.7;
+const SMALL_SHAPES = SHAPES.filter(s=>s.c.length<4);
+const BIG_SHAPES   = SHAPES.filter(s=>s.c.length>=4);
+const SMALL_W = SMALL_SHAPES.reduce((a,x)=>a+x.w,0);
+const BIG_W   = BIG_SHAPES.reduce((a,x)=>a+x.w,0);
 
 let board = new Array(GRID*GRID).fill(0);   // 0=空，否則顏色索引+1
 let tray = [null,null,null];
@@ -333,10 +354,15 @@ function paintCell(i){
 function paintAll(){for(let i=0;i<board.length;i++)paintCell(i)}
 
 /* ── 方塊生成與繪製 ── */
+function pickFrom(list,total){
+  let r=Math.random()*total;
+  for(const s of list){ if((r-=s.w)<=0) return {c:s.c, col:s.col}; }
+  const last=list[list.length-1];
+  return {c:last.c, col:last.col};
+}
 function randomShape(){
-  let r=Math.random()*TOTAL_W;
-  for(const s of SHAPES){ if((r-=s.w)<=0) return {c:s.c, col:s.col}; }
-  return {c:SHAPES[0].c, col:SHAPES[0].col};
+  const small = SMALL_SHAPES.length && (!BIG_SHAPES.length || Math.random()<SMALL_RATE);
+  return small ? pickFrom(SMALL_SHAPES,SMALL_W) : pickFrom(BIG_SHAPES,BIG_W);
 }
 /* 順時針旋轉 90° */
 function rotCells(cells){
@@ -373,7 +399,7 @@ function renderSlot(slot,sh){
   slot.classList.remove('stuck','dragging');
   if(!sh) return;
   const [rows,cols]=shapeDims(sh);
-  const px=Math.min(18, Math.floor(80/cols), Math.floor(80/rows));
+  const px=Math.min(16, Math.floor(70/cols), Math.floor(70/rows));
   const p=buildPieceEl(sh,px,3);
   p.className='piece';
   slot.appendChild(p);
@@ -427,10 +453,23 @@ function fullLines(b){
 }
 
 /* ── 特效 ── */
-function boardRect(){return boardEl.getBoundingClientRect()}
+let geo=null, holdRect=null;
+function refreshGeo(){
+  const br=boardEl.getBoundingClientRect();
+  geo={left:br.left, top:br.top, w:br.width, h:br.height,
+       cs:(br.width-16-4*(GRID-1))/GRID, gap:4};
+  holdRect=holdSlotEl.getBoundingClientRect();
+  return geo;
+}
+function G(){ return geo||refreshGeo(); }
+function invalidateGeo(){ geo=null; holdRect=null; }
+window.addEventListener('resize',invalidateGeo);
+window.addEventListener('orientationchange',invalidateGeo);
+window.addEventListener('scroll',invalidateGeo,{passive:true});
+function boardRect(){ const g=G(); return {left:g.left, top:g.top, width:g.w, height:g.h}; }
 function cellCenter(i){
-  const el=cellEls[i].getBoundingClientRect(), br=boardRect();
-  return [el.left-br.left+el.width/2, el.top-br.top+el.height/2];
+  const g=G(), r=(i/GRID)|0, c=i%GRID;
+  return [8+c*(g.cs+g.gap)+g.cs/2, 8+r*(g.cs+g.gap)+g.cs/2];
 }
 function floatScore(text,x,y){
   const d=document.createElement('div');
@@ -485,9 +524,11 @@ function place(src,r0,c0){
     cols.forEach(c=>{for(let r=0;r<GRID;r++)toClear.add(r*GRID+c)});
     const pts=(10*lines*(lines+1)/2)*Math.max(1,combo);
     sfx.clear(lines);
-    toClear.forEach(i=>{
+    const clearArr=[...toClear];
+    const pStep=Math.ceil(clearArr.length/16);   // 粒子最多約 16 處，避免大消除掉幀
+    clearArr.forEach((i,k)=>{
       cellEls[i].classList.add('clearing');
-      particles(i,COLORS[board[i]-1]);
+      if(k%pStep===0) particles(i,COLORS[board[i]-1]);
     });
     const cx=boardRect().width/2;
     let cy=boardRect().height/2;
@@ -562,43 +603,38 @@ $('#restartBtn').addEventListener('click',newGame);
 let drag=null; // {slotIdx, shape, el, pw, ph, lift, ghost:[]}
 function clearGhost(){
   if(!drag) return;
-  drag.ghost.forEach(i=>{
-    cellEls[i].classList.remove('ghost','hint-clear');
-    paintCell(i);
-  });
-  cellEls.forEach(el=>el.classList.remove('hint-clear'));
-  drag.ghost=[];
+  drag.hint.forEach(i=>cellEls[i].classList.remove('hint-clear'));
+  drag.ghost.forEach(i=>paintCell(i));
+  drag.ghost=[]; drag.hint=[];
 }
-function boardCellSize(){
-  const br=boardRect();
-  return (br.width-16-4*(GRID-1))/GRID; // padding 8*2、gap 4
-}
+function boardCellSize(){ return G().cs; }
 function dragOrigin(){
   // 拖曳元素左上角 → 棋盤格座標
-  const br=boardRect(), cs=boardCellSize(), gap=4;
-  const x=drag.x, y=drag.y;
-  const c=Math.round((x-br.left-8)/(cs+gap));
-  const r=Math.round((y-br.top-8)/(cs+gap));
-  return [r,c];
+  const g=G(), step=g.cs+g.gap;
+  return [Math.round((drag.y-g.top-8)/step), Math.round((drag.x-g.left-8)/step)];
 }
 function overHold(x,y){
-  const r=holdSlotEl.getBoundingClientRect();
+  if(!holdRect) refreshGeo();
+  const r=holdRect;
   return x>=r.left-6&&x<=r.right+6&&y>=r.top-6&&y<=r.bottom+6;
 }
 function updateDrag(clientX,clientY){
   drag.lastX=clientX; drag.lastY=clientY;
-  if(Math.hypot(clientX-drag.startX,clientY-drag.startY)>8) drag.moved=true;
+  if(!drag.moved && Math.hypot(clientX-drag.startX,clientY-drag.startY)>8) drag.moved=true;
   drag.x=clientX-drag.pw/2;
   drag.y=clientY-drag.ph/2-drag.lift;
-  drag.el.style.left=drag.x+'px';
-  drag.el.style.top=drag.y+'px';
-  clearGhost();
-  drag.valid=null;
+  drag.el.style.transform='translate3d('+drag.x+'px,'+drag.y+'px,0)';
   // 懸停在暫存格上（來源是托盤才能存入）
   const hovHold = !drag.src.isHold && overHold(clientX,clientY);
+  let r=0,c=0,key;
+  if(hovHold) key='H';
+  else { [r,c]=dragOrigin(); key=r+','+c; }
+  if(key===drag.key) return;   // 還在同一格 → 完全不動 DOM
+  drag.key=key;
+  clearGhost();
+  drag.valid=null;
   holdSlotEl.classList.toggle('drop-target',hovHold);
   if(hovHold) return;
-  const [r,c]=dragOrigin();
   if(canPlace(drag.shape,r,c)){
     drag.valid=[r,c];
     const sim=board.slice();
@@ -611,8 +647,8 @@ function updateDrag(clientX,clientY){
     }
     // 預告會消除的行列
     const {rows,cols}=fullLines(sim);
-    rows.forEach(rr=>{for(let cc=0;cc<GRID;cc++)cellEls[rr*GRID+cc].classList.add('hint-clear')});
-    cols.forEach(cc=>{for(let rr=0;rr<GRID;rr++)cellEls[rr*GRID+cc].classList.add('hint-clear')});
+    rows.forEach(rr=>{for(let cc=0;cc<GRID;cc++){const i=rr*GRID+cc;cellEls[i].classList.add('hint-clear');drag.hint.push(i)}});
+    cols.forEach(cc=>{for(let rr=0;rr<GRID;rr++){const i=rr*GRID+cc;cellEls[i].classList.add('hint-clear');drag.hint.push(i)}});
   }
 }
 trayEl.addEventListener('pointerdown',e=>{
@@ -624,13 +660,14 @@ trayEl.addEventListener('pointerdown',e=>{
   const shape=isHold?hold:tray[idx];
   if(!shape) return;
   e.preventDefault();
+  refreshGeo();
   const cs=boardCellSize(), gap=4;
   const [rows,cols]=shapeDims(shape);
   const el=buildPieceEl(shape,cs,gap);
   el.id='drag';
   document.body.appendChild(el);
   drag={
-    src:{isHold,idx}, shape, el, ghost:[], valid:null,
+    src:{isHold,idx}, shape, el, ghost:[], hint:[], valid:null, key:null, raf:0,
     startX:e.clientX, startY:e.clientY, moved:false,
     pw:cols*cs+(cols-1)*gap,
     ph:rows*cs+(rows-1)*gap,
@@ -643,12 +680,23 @@ trayEl.addEventListener('pointerdown',e=>{
   window.addEventListener('pointerup',onUp);
   window.addEventListener('pointercancel',onUp);
 });
-function onMove(e){ if(drag){e.preventDefault();updateDrag(e.clientX,e.clientY)} }
+function onMove(e){
+  if(!drag) return;
+  e.preventDefault();
+  drag.px=e.clientX; drag.py=e.clientY;
+  if(!drag.raf) drag.raf=requestAnimationFrame(flushDrag);   // 每幀最多更新一次
+}
+function flushDrag(){
+  if(!drag) return;
+  drag.raf=0;
+  updateDrag(drag.px,drag.py);
+}
 function onUp(){
   if(!drag) return;
   window.removeEventListener('pointermove',onMove);
   window.removeEventListener('pointerup',onUp);
   window.removeEventListener('pointercancel',onUp);
+  if(drag.raf) cancelAnimationFrame(drag.raf);
   clearGhost();
   drag.el.remove();
   holdSlotEl.classList.remove('drop-target');
